@@ -23,6 +23,39 @@ function list_all(manager) {
     }
 
     console.log("");
+
+    console.log("Available projects:");
+    projects = manager.allProjects();
+    for (var projname in projects) {
+        if (!projects.hasOwnProperty(projname))
+            continue;
+        var project = projects[projname];
+        console.log("    %s %s", project.name().padRight(15), project.description());
+    }
+
+    console.log("");
+
+    console.log("Available boards:");
+    boards = manager.allBoards();
+    for (var boardname in boards) {
+        if (!boards.hasOwnProperty(boardname))
+            continue;
+        var board = boards[boardname];
+        console.log("    %s %s", board.name().padRight(15), board.description());
+    }
+
+    console.log("");
+
+    console.log("Available toolchains:");
+    toolchains = manager.allToolchains();
+    for (var toolchainname in toolchains) {
+        if (!toolchains.hasOwnProperty(toolchainname))
+            continue;
+        var toolchain = toolchains[toolchainname];
+        console.log("    %s %s  Supports: %s", toolchain.name().padRight(15), toolchain.description(), toolchain.archNames().join(", "));
+    }
+
+    console.log("");
 }
 
 function build_package(manager, args) {
@@ -39,6 +72,12 @@ function build_platform(manager, args) {
     });
 }
 
+function build_project(manager, args) {
+    args.forEach(function(projectName) {
+        project = manager.getProject(projectName);
+        project.build();
+    });
+}
 function print_help(manager) {
     console.log("Usage:");
     console.log("General arguments:");
@@ -48,6 +87,7 @@ function print_help(manager) {
     console.log("        list   List known modules");
     console.log("    buildpkg   Build a package");
     console.log("   buildplat   Build a platform");
+    console.log("       build   Build a project");
 }
 
 function run_renno(args) {
@@ -70,6 +110,9 @@ function run_renno(args) {
 
         else if (arg == "buildplat")
             operation = build_platform;
+
+        else if ((arg == "build") || (arg == "buildproj"))
+            operation = build_project;
 
         else
             residual.push(arg);

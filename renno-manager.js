@@ -4,6 +4,8 @@ os = require('os');
 RennoPackage = require("./renno-package.js");
 RennoToolchain = require("./renno-toolchain.js");
 RennoPlatform = require("./renno-platform.js");
+RennoProject = require("./renno-project.js");
+RennoBoard = require("./renno-board.js");
 
 module.exports = function() {
     this._packages = new Object();
@@ -31,7 +33,8 @@ module.exports = function() {
                     this._packages[newPackage.name()] = newPackage;
 
                     /* Add this package to a reverse-lookup for providing */
-                    for (provide in newPackage.provides()) {
+                    for (provideIdx in newPackage.provides()) {
+                        var provide = newPackage.provides()[provideIdx];
                         if (!(provide in this._package_provides))
                             this._package_provides[provide] = new Array();
                         this._package_provides[provide].push(newPackage);
@@ -45,16 +48,23 @@ module.exports = function() {
                     this._platforms[newPlatform.name()] = newPlatform;
                 }
                 else if (candidate.endsWith(".rennoproj")) {
-                    ;
+                    newProject = new RennoProject(candidate, this);
+                    if (newProject.name() in this._projects) {
+                        throw "Project " + newProject.name() + " already loaded!  Fixme.";
+                    }
+                    this._projects[newProject.name()] = newProject;
                 }
                 else if (candidate.endsWith(".rennoboard")) {
-                    ;
+                    newBoard = new RennoBoard(candidate, this);
+                    if (newBoard.name() in this._boards)
+                        throw "Board " + newBoard.name() + " already loaded!  Fixme.";
+                    this._boards[newBoard.name()] = newBoard;
                 }
                 else if (candidate.endsWith(".rennotoolchain")) {
                     newToolchain = new RennoToolchain(candidate, this);
 
                     if (newToolchain.host() != this.platform()) {
-                        console.log("Skipping %s from %s, as it's not for %s", newToolchain.name(), candidate, this.platform());
+                        //console.log("Skipping %s from %s, as it's not for %s", newToolchain.name(), candidate, this.platform());
                         continue;
                     }
 
@@ -82,13 +92,37 @@ module.exports = function() {
         return this._platforms;
     };
 
+    this.allProjects = function() {
+        return this._projects;
+    };
+
+    this.allBoards = function() {
+        return this._boards;
+    };
+
+    this.allToolchains = function() {
+        return this._toolchains;
+    };
+
     this.getPackage = function(name) {
         return this._packages[name];
     };
 
     this.getPlatform = function(name) {
         return this._platforms[name];
-    }
+    };
+
+    this.getProject = function(name) {
+        return this._projects[name];
+    };
+
+    this.getBoard = function(name) {
+        return this._boards[name];
+    };
+
+    this.getToolchain = function(name) {
+        return this._toolchains[name];
+    };
 
     /*
     Get a list of packages that satisfy "names".  When there is a conflict, or when
@@ -106,7 +140,8 @@ module.exports = function() {
 
         console.log("Resolving packages: %s", names.join(", "));
 
-        for (pkgName in names) {
+        for (pkgIdx in names) {
+            pkgName = names[pkgIdx];
             if (pkgName in ignore)
                 continue;
 
@@ -117,7 +152,7 @@ module.exports = function() {
             candidates = this._package_provides[pkgName];
 
             if ((mapping != null) && (pkgName in mapping)) {
-                foundPkg = self.getPackage(mapping[pkgName]);
+                foundPkg = this.getPackage(mapping[pkgName]);
                 console.log("Mapping resolved %s to %s", pkgName, foundPkg.name());
             }
 
@@ -137,8 +172,8 @@ module.exports = function() {
 
             else {
                 var candidateNames = new Array();
-                for (pkg in candidates)
-                    candidateNames.push(pkg.name());
+                for (pkgidx in candidates)
+                    candidateNames.push(candidates[pkgidx].name());
                 throw "Multiple packages satisfy dependency '" + pkgName + "': " + candidateNames.join(", ");
             }
             ignore[pkgName] = true;
@@ -147,7 +182,7 @@ module.exports = function() {
 
             extras = this.getPackages(foundPkg.runDepends(), mapping, pickRandomly, ignore);
             for (item in extras)
-                output.push(item);
+                output.push(extras[item]);
         }
 
         return output;

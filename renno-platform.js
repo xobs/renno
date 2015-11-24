@@ -46,9 +46,13 @@ var RennoPlatformConfiguration = function(platform, config_name, conf) {
 
     if ("entry" in conf)
         this._entry = conf.entry;
+    else
+        this._entry = "";
 
     if ("script" in conf)
         this._script = conf.script;
+    else
+        this._script = "";
 
     this._defs = new Array();
     if ("defs" in conf)
@@ -88,6 +92,14 @@ module.exports = function(path, manager) {
         return this._defs;
     };
 
+    this.configurations = function() {
+        return this._configurations;
+    };
+
+    this.configuration = function(name) {
+        return this._configurations[name];
+    };
+
     this.configurationPrefix = function() {
         return this._path + jspath.sep + "Configurations" + jspath.sep;
     };
@@ -101,6 +113,146 @@ module.exports = function(path, manager) {
     };
 
     this.build = function() {
+        for (configName in this.configurations()) {
+            var config = this.configurations()[configName];
+            var toolchain = manager.getToolchain(config.arch());
+
+            console.log("Building for configuratoin %s", configName);
+
+            var cArgsBase = this.manager().defaultCArgs(config.arch());
+            var cxxArgsBase = this.manager().defaultCxxArgs(config.arch());
+            var asArgsBase = this.manager().defaultAsArgs(config.arch());
+            var defsBase = new Array();
+            var incBase = new Array();
+
+            for (def in this.defs())
+                defsBase.push("-D" + def);
+            for (def in config.defs())
+                defsBase.push("-D" + def);
+
+            for (libName in config.libs()) {
+                lib = config.libs()[libName];
+
+                var cArgs = cArgsBase.slice();
+                var cxxArgs = cxxArgsBase.slice();
+                var asArgs = asArgsBase.slice();
+                var defs = defsBase.slice();
+                var inc = incBase.slice();
+
+                if ("defs" in lib)
+                    for (def in lib.defs)
+                        defs.push("-D" + def);
+                if ("include" in lib) {
+                    for (incpath in lib.include)
+                        inc.push("-I" + this.sourcePrefix() + incpath);
+                }
+                else
+                    inc.push("-I" + this.sourcePrefix());
+
+                var objFiles = new Array();
+
+                if ("csrcs" in lib) {
+                    for (var csrcNum = 0; csrcNum < lib.csrcs.length; csrcNum++) {
+                        csrc = lib.csrcs[csrcNum];
+                        fs.mkdirpSync(this.tempPrefix() + jspath.dirname(csrc));
+                        objFile = this.tempPrefix() + jspath.basename(csrc, ".c") + ".o";
+                        csrc = this.sourcePrefix() + csrc;
+
+                        args = new Array();
+                        cArgs.forEach(function(a) { args.push(a); });
+                        defs.forEach(function(a) { args.push(a); });
+                        inc.forEach(function(a) { args.push(a); });
+                        args.push(csrc)
+                        args.push("-o")
+                        args.push(objFile)
+                        console.log(toolchain.cCompiler(config.arch()) + " " + args.join(" "));
+
+                        try {
+                            p = child_process.spawnSync(
+                                    toolchain.cCompiler(config.arch()),
+                                    args);
+                        }
+                        catch(e) {
+                            console.log("Failed to compile: %s", e);
+                            throw e;
+                        }
+                        objFiles.push(objFile);
+                    }
+                }
+                if ("asrcs" in lib) {
+                    for (var asrcNum = 0; asrcNum < lib.asrcs.length; asrcNum++) {
+                        asrc = lib.asrcs[asrcNum];
+                        fs.mkdirpSync(this.tempPrefix() + jspath.dirname(asrc));
+                        objFile = this.tempPrefix() + jspath.basename(asrc, ".s") + ".o";
+                        asrc = this.sourcePrefix() + asrc;
+
+                        args = new Array();
+                        asArgs.forEach(function(a) { args.push(a); });
+                        defs.forEach(function(a) { args.push(a); });
+                        inc.forEach(function(a) { args.push(a); });
+                        args.push(asrc)
+                        args.push("-o")
+                        args.push(objFile)
+                        console.log(toolchain.assembler(config.arch()) + " " + args.join(" "));
+
+                        try {
+                            p = child_process.spawnSync(
+                                    toolchain.assembler(config.arch()),
+                                    args);
+                        }
+                        catch(e) {
+                            console.log("Failed to assemble: %s", e);
+                            throw e;
+                        }
+                        objFiles.push(objFile);
+                    }
+                }
+                if ("cxxsrcs" in lib) {
+                    for (var cxxsrcNum = 0; cxxsrcNum < lib.cxxsrcs.length; cxxsrcNum++) {
+                        cxxsrc = lib.cxxsrcs[cxxsrcNum];
+                        fs.mkdirpSync(this.tempPrefix() + jspath.dirname(cxxsrc));
+                        objFile = this.tempPrefix() + jspath.basename(cxxsrc, ".cpp") + ".o";
+                        cxxsrc = this.sourcePrefix() + cxxsrc;
+
+                        args = new Array();
+                        cxxArgs.forEach(function(a) { args.push(a); });
+                        defs.forEach(function(a) { args.push(a); });
+                        inc.forEach(function(a) { args.push(a); });
+                        args.push(cxxsrc)
+                        args.push("-o")
+                        args.push(objFile)
+                        console.log(toolchain.cxxCompiler(config.arch()) + " " + args.join(" "));
+
+                        try {
+                            p = child_process.spawnSync(
+                                    toolchain.cxxCompiler(config.arch()),
+                                    args);
+                        }
+                        catch(e) {
+                            console.log("Failed to compile: %s", e);
+                            throw e;
+                        }
+                        objFiles.push(objFile);
+                    }
+                }
+
+                /* Archive all object files into a .a library */
+                args = new Array();
+                toolchain.arArgs(config.arch()).forEach(function(a) { args.push(a); });
+                args.push(this.path() + jspath.sep + "Configurations" + jspath.sep + configName + jspath.sep + "lib" + this.name() + "-" + libName + ".a");
+                objFiles.forEach(function(a) { args.push(a); });
+                console.log(toolchain.archiver(config.arch()) + " " + args.join(" "));
+
+                try {
+                    child_process.spawnSync(
+                        toolchain.archiver(config.arch()),
+                        args);
+                }
+                catch(e) {
+                    throw "Archiver returned error: " + e;
+                }
+            }
+        }
     };
 
     candidateFiles = [

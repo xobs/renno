@@ -117,6 +117,10 @@ module.exports = function(path, manager) {
         return this._run_include;
     };
 
+    this.runLibs = function() {
+        return this._run_libs;
+    };
+
     this.provides = function() {
         return this._run_provides;
     };
@@ -135,6 +139,35 @@ module.exports = function(path, manager) {
 
     this.tempPrefix = function() {
         return os.tmpdir() + jspath.sep + "rennobuild" + jspath.sep;
+    };
+
+    this.isDirectory = function(path) {
+        try {
+            if (fs.statSync(path).isDirectory())
+                return true;
+        }
+        catch (e) {
+            ;
+        }
+        return false;
+    };
+
+    this.libraryPath = function(arch, plat, board) {
+        var basePath = this.libraryPrefix();
+
+        var candidates = [
+            basePath + "board" + jspath.sep + board + jspath.sep,
+            basePath + "platform" + jspath.sep + plat + jspath.sep,
+            basePath + "arch" + jspath.sep + arch + jspath.sep
+        ];
+
+        if ((board != null) && (board != "") && this.isDirectory(candidates[0]))
+            return candidates[0];
+        if ((plat != null) && (plat != "") && this.isDirectory(candidates[1]))
+            return candidates[1];
+        if ((arch != null) && (arch != "") && this.isDirectory(candidates[2]))
+            return candidates[2];
+        throw "Library not found for arch: " + arch + ", platform: " + plat + ", board: " + board;
     };
 
     this.createLibraryDir = function(name, type) {
@@ -187,7 +220,6 @@ module.exports = function(path, manager) {
         var targets = this.buildTargets();
         var libs = this.buildLibs();
 
-        console.log("Will build for %d target(s)", targets.length);
         for (targetName in targets) {
             var target = targets[targetName];
             var toolchain = manager.getToolchain(target.arch());
@@ -213,9 +245,7 @@ module.exports = function(path, manager) {
             }
 
             for (libName in libs) {
-                lib = libs[libName]
-                console.log("Building lib %s", libName);
-                console.log(lib);
+                lib = libs[libName];
 
                 var cArgs = cArgsBase.slice();
                 var cxxArgs = cxxArgsBase.slice();
@@ -431,7 +461,6 @@ module.exports = function(path, manager) {
     if ("build" in conf) {
         this._build_targets = new Array();
         for (targetName in conf.build.targets) {
-            console.log("%s: Reading in target %s", this.name(), targetName);
             this._build_targets[targetName] = new RennoBuildTarget(targetName, conf.build.targets[targetName]);
         }
         this._build_libs = new Object();
@@ -450,10 +479,14 @@ module.exports = function(path, manager) {
     this.readRunArray(conf, "depends");
 
     this._run_provides = new Array(this.name());
-    if ("provides" in conf["run"])
-        conf.run.provides.forEach(function(item) {
-            this._run_provides.push(item);
-        });
+    if ("provides" in conf.run)
+        for (idx in conf.run.provides)
+            this._run_provides.push(conf.run.provides[idx]);
+
+    if ("libs" in conf.run)
+        this._run_libs = conf.run.libs;
+    else
+        this._run_libs = new Object();
 
     try {
         this._arches = fs.readdirSync(this.libraryPrefix() + "arch");
